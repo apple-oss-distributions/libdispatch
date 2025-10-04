@@ -121,7 +121,16 @@ _dispatch_mach_create(const char *label, dispatch_queue_t q, void *context,
 	dispatch_mach_send_refs_t dmsr;
 	dispatch_mach_t dm;
 
-	dm = _dispatch_queue_alloc(mach, DQF_MUTABLE, 1,
+	dispatch_queue_flags_t dqf = DQF_MUTABLE;
+	if (label) {
+		const char *tmp = _dispatch_strdup_if_mutable(label);
+		if (tmp != label) {
+			dqf |= DQF_LABEL_NEEDS_FREE;
+			label = tmp;
+		}
+	}
+
+	dm = _dispatch_queue_alloc(mach, dqf, 1,
 			DISPATCH_QUEUE_INACTIVE | DISPATCH_QUEUE_ROLE_INNER)._dm;
 	dm->dq_label = label;
 	dm->dm_is_xpc = (bool)(dmcf & DMCF_IS_XPC);
@@ -184,12 +193,12 @@ void
 _dispatch_mach_dispose(dispatch_mach_t dm, bool *allow_free)
 {
 	_dispatch_object_debug(dm, "%s", __func__);
-	_dispatch_unote_dispose(dm->dm_recv_refs);
+	_dispatch_unote_dispose(dm->dm_recv_refs, false);
 	dm->dm_recv_refs = NULL;
-	_dispatch_unote_dispose(dm->dm_send_refs);
+	_dispatch_unote_dispose(dm->dm_send_refs, false);
 	dm->dm_send_refs = NULL;
 	if (dm->dm_xpc_term_refs) {
-		_dispatch_unote_dispose(dm->dm_xpc_term_refs);
+		_dispatch_unote_dispose(dm->dm_xpc_term_refs, false);
 		dm->dm_xpc_term_refs = NULL;
 	}
 	_dispatch_lane_class_dispose(dm, allow_free);
@@ -390,7 +399,7 @@ _dispatch_mach_reply_unregister(dispatch_mach_t dm,
 		dmr->dmr_voucher = NULL;
 	}
 	if (!sync_waiter) {
-		_dispatch_unote_dispose(dmr);
+		_dispatch_unote_dispose(dmr, true);
 	}
 
 	if (dmsgr) {
